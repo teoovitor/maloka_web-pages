@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Maloka | Gerador de Cupom de Desconto</title>
+  <style>
+    :root { --brand:#ff730e; --ink:#001514; }
+    body{font-family:system-ui,Arial;margin:0;padding:24px;background:#001514}
+    form{max-width:420px;margin:auto;background:#f2f2f2;padding:24px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+    label{display:block;margin:12px 0 6px}
+    input,button{width:100%;padding:12px;border-radius:8px;border:1px solid #ddd}
+    input:focus-visible, button:focus-visible{outline:3px solid var(--brand); outline-offset:2px}
+    button{cursor:pointer;border:0;background:var(--brand);color:var(--ink);font-weight:600;margin-top:12px}
+    button[disabled]{opacity:.6; cursor:not-allowed}
+    .msg{margin-top:12px;font-size:14px}
+    small{display:block;color:#666;margin-top:8px;line-height:1.4}
+    .sr-only{position:absolute;left:-9999px}
+    h1 {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      color: var(--brand);}
+    /*.logo_maloka {
+      height: 40px;
+      width: auto;
+      vertical-align: middle;
+    }*/
+    /*INSERIR DEPOIS DO H1    <img src="img/logo_maloka.png" alt="Logo Maloka" class="logo_maloka" />*/
+  </style>
+</head>
+<body>
+  <form id="lead" autocomplete="off" novalidate>
+    <h1>
+      Maloka 🛖
+    </h1>
+
+    <h2>Gerador de Cupom de Desconto</h2>
+
+    <label for="nome">Nome do cliente</label>
+    <input id="nome" name="nome" required autocomplete="name" minlength="2"
+           pattern="^[A-Za-zÀ-ÿ' .-]{2,}$" />
+
+    <label for="valor">Valor do desconto (%)</label>
+    <input id="valor" name="valor" type="number" inputmode="numeric"
+           min="1" max="100" step="1" placeholder="Ex.: 10" required
+           aria-describedby="valorHelp"/>
+    <small id="valorHelp">Informe apenas números — ex.: <strong>10</strong> para <strong>10%</strong></small>
+
+    <label for="compra">Valor da compra (R$)</label>
+    <input id="compra" name="compra" type="text" inputmode="decimal" required
+           placeholder="Ex.: 56,40" aria-describedby="compraHelp"
+           pattern="^\s*(\d+|\d{1,3}([.,]\d{3})+)([.,]\d{1,2})?\s*$" />
+    <small id="compraHelp">
+      Aceita vírgula ou ponto: <strong>100</strong>, <strong>100,00</strong>, <strong>56,40</strong>, 
+      <strong>1000</strong>, <strong>1.000</strong>, <strong>1.000,50</strong>.
+      Usaremos esse valor para calcular o desconto em reais.
+    </small>
+
+    <label for="telefone">Telefone (WhatsApp)</label>
+    <input id="telefone" name="telefone" type="tel" required
+           inputmode="numeric" autocomplete="tel" placeholder="(11) 9xxxx-xxxx"
+           maxlength="16" aria-describedby="telHelp"
+           pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"/>
+    <small id="telHelp">Digite apenas números (DDD + número). Ex.: <strong>92985183051</strong></small>
+
+    <!-- Honeypot anti-bot -->
+    <label class="sr-only" for="website">Não preencha</label>
+    <input id="website" name="website" class="sr-only" tabindex="-1" autocomplete="off" />
+
+    <small>
+      Ao clicar em enviar, você concorda em mandar uma mensagem no WhatsApp informado com o cupom de desconto. 
+    </small>
+
+    <button type="submit" id="submitBtn">Gerar cupom de desconto</button>
+    <div class="msg" id="msg" aria-live="polite"></div>
+  </form>
+
+  <script>
+
+    // =====================================================================
+    // Config por query string (flexibilidade multi-lojas)
+    // =====================================================================
+    // Exemplos:
+    //   ?provider=web                                        => abre WhatsApp Web
+    //   ?provider=link&walink=https%3A%2F%2Fwa.link%2F1esyzr => abre wa.link
+    //   ?provider=n8n                                        => envia via webhook
+    //   ?log=1                                               => registra no n8n
+    //   ?vendedor=123                                        => id/identificador do vendedor
+    const params   = new URLSearchParams(location.search);
+    const provider = (params.get('provider') || 'web').toLowerCase(); // web | link | n8n
+    const waLink   = params.get('walink') || '';                      // link curto da loja
+    const doLog    = params.get('log') === '1';                       // força log
+    const vendedor = params.get('vendedor') || '';                    // id do vendedor
+
+    // Endpoint para log/envio via n8n (só usado se ?log=1)
+    const webhookUrl = 'https://SEU-DOMINIO-N8N/webhook/lead-cupom';
+
+    const f = document.getElementById('lead');
+    const msg = document.getElementById('msg');
+    const btn = document.getElementById('submitBtn');
+    const tel = document.getElementById('telefone');
+    const compraEl = document.getElementById('compra');
+
+
+    // Utilitários - Telefone (BR)
+    const onlyDigits = (s) => String(s).replace(/\D/g, '');
+
+    function maskBR(digits) {
+      // Limita a 11 dígitos (DDD + 9 dígitos)
+      digits = onlyDigits(digits).slice(0, 11);
+      const len = digits.length;
+      if (len === 0) return '';
+      if (len < 3) return '(' + digits; // abre DDD
+      const ddd = digits.slice(0, 2);
+      const rest = digits.slice(2);
+      if (rest.length <= 4) return `(${ddd}) ${rest}`;
+      return `(${ddd}) ${rest.slice(0,5)}-${rest.slice(5)}`; // 11 dígitos (celular)
+    }
+
+    function toE164BR(digits) {
+      let ds = onlyDigits(digits);
+      // Aceita 11 dígitos - DDD + 9 dígitos do telefone
+      if (ds.length === 11) return '+55' + ds;
+      // Caso já venha com 55 na frente
+      if (ds.startsWith('55') && (ds.length === 12 || ds.length === 13)) return '+' + ds;
+      throw new Error('Telefone inválido. Use DDD + número (ex.: 11999998888).');
+    }
+
+
+    //  Utilitários - Datas (BR)
+    function addDays(date, days) {           // utilitário para D+30
+      const d = new Date(date);
+      d.setDate(d.getDate() + days);
+      return d;
+    }
+    function formatDateBR(d) {               // formata DD/MM/AAAA
+      return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    }
+
+
+    // Utilitários — Dinheiro (BR)
+    // Converte string monetária (com vírgula/ponto) para centavos (inteiro)
+    function parseMoneyToCents(input) {
+      let s = String(input || '').trim();
+      if (!s) return NaN;
+
+      // remove símbolos e espaços, mantém apenas dígitos e separadores
+      s = s.replace(/[^\d,\.]/g, '');
+
+      const lastComma = s.lastIndexOf(',');
+      const lastDot   = s.lastIndexOf('.');
+      const sepIndex  = Math.max(lastComma, lastDot);
+
+      if (sepIndex !== -1) {
+        // Há separador decimal → trata parte inteira e fracionária
+        let intPart  = s.slice(0, sepIndex).replace(/\D/g, '');
+        let fracPart = s.slice(sepIndex + 1).replace(/\D/g, '').slice(0, 2);
+        if (fracPart.length === 1) fracPart += '0';
+        if (fracPart.length === 0) fracPart  = '00';
+        if (!intPart) intPart = '0';
+        return (parseInt(intPart, 10) * 100) + parseInt(fracPart, 10);
+      } else {
+        // Sem separador decimal → valor inteiro em reais
+        const intOnly = s.replace(/\D/g, '');
+        if (!intOnly) return NaN;
+        return parseInt(intOnly, 10) * 100;
+      }
+    }
+
+    // Formata inteiro de reais (sem centavos): 5 -> "R$ 5"
+    function formatBRLReais(reaisInt) {
+      return `R$ ${Number(reaisInt).toLocaleString('pt-BR')}`;
+    }
+    
+
+    // Monta a mensagem do WhatsApp
+    function montarMensagem(nome, descontoReais) {
+      const nomeTrim = (nome || '').trim();
+      const saudacao = nomeTrim ? `Olá, ${nomeTrim}!` : 'Olá!';
+      const expira   = formatDateBR(addDays(new Date(), 30)); // D+30
+      // Quebras de linha com \n (encodeURIComponent converte para %0A)
+      return (
+        `${saudacao}\n\n` +
+        `Preparamos um cupom de ${formatBRLReais(descontoReais)} de desconto para você usar na nossa loja.\n` +
+        `Válido até ${expira}.\n\n` +
+        `Quer aproveitar agora?`
+      );
+    }
+
+
+     // Força entrada numérica e aplica máscara ao digitar/colar
+    tel.addEventListener('input', () => {
+      const digits = onlyDigits(tel.value);
+      tel.value = maskBR(digits);
+    });
+
+    // Evita caracteres não numéricos no teclado
+    tel.addEventListener('keypress', (e) => {
+      const isDigit = /[0-9]/.test(e.key);
+      if (!isDigit) e.preventDefault();
+    });
+
+     // Normaliza espaços no valor da compra ao perder o foco
+    compraEl.addEventListener('blur', () => { 
+      let cents = parseMoneyToCents(compraEl.value);
+      if (Number.isFinite(cents)) {
+        // Mostra no padrão brasileiro com vírgula (duas casas) apenas como UX
+        const valorBR = (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        compraEl.value = valorBR;
+      }
+    });
+
+
+     // Abre WhatsApp com a mensagem (Web ou wa.link)
+    function abrirWhatsApp(url) {   // redireciona; evita popup block
+      location.href = url;
+    }
+
+    // Gera o link de acordo com o provider
+    function gerarLinkWhatsApp(e164, texto) {
+      if (provider === 'web') {
+        // wa.me remove o '+' do E.164
+        return `https://wa.me/${e164.replace('+','')}?text=${encodeURIComponent(texto)}`;
+      } else if (provider === 'link' && waLink) {
+        // Alguns encurtadores aceitam ?text=
+        const separador = waLink.includes('?') ? '&' : '?';
+        return `${waLink}${separador}text=${encodeURIComponent(texto)}`;
+      }
+      return null; // n8n cuidará do envio
+    }
+
+    // Log no n8n (assíncrono; não bloqueia UX)
+    async function logarNoN8n(payload) {
+      try {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, modoEnvio: provider, soLog: true })
+        });
+      } catch (e) {
+        // não bloqueia a UX por falha de log
+      }
+    }
+
+    // SUBMIT
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      // Honeypot
+      if (document.getElementById('website').value) {
+        return; // provável bot
+      }
+
+      // Valida HTML5
+      if (!f.checkValidity()) {
+        f.reportValidity();
+        return;
+      }
+
+      // Bloqueia double-submit
+      btn.disabled = true;
+      msg.textContent = 'Gerando mensagem...';
+
+      try{
+        // Monta payload
+        const form = new FormData(f);
+        const valorPerc = parseInt(form.get('valor'), 10);
+        const compraStr  = String(form.get('compra') || '');       
+        const compraCents = parseMoneyToCents(compraStr);          
+        const e164 = toE164BR(tel.value);
+
+        if (!Number.isFinite(valorPerc) || valorPerc < 1 || valorPerc > 100) {
+          throw new Error('Informe um percentual entre 1 e 100.');
+        }
+        if (!Number.isFinite(compraCents) || compraCents <= 0) {    
+          throw new Error('Informe um valor de compra válido (ex.: 56,40).');
+        }
+
+        // CÁLCULO DO DESCONTO EM REAIS (ARREDONDAR PARA BAIXO) 
+        // Ex.: 56,40 * 10% = 5,64 → R$ 5
+        const descontoCentavos = Math.floor((compraCents * valorPerc) / 100); // em centavos
+        const descontoReais    = Math.floor(descontoCentavos / 100);          // inteiro em reais
+
+        const payload = {
+          nome: String(form.get('nome') || '').trim(),
+          valor: valorPerc,                // "valor" é % (ex.: 10)
+          compra_centavos: compraCents,     // para log
+          desconto_reais: descontoReais,    // para log
+          telefone: e164,                  // E.164: +55...
+          vendedor: vendedor || undefined
+        };
+
+
+        const texto = montarMensagem(payload.nome, descontoReais);
+
+        // Se provider = web/link: abre WhatsApp no cliente
+        if (provider === 'web' || provider === 'link') {
+          const link = gerarLinkWhatsApp(e164, texto);
+          if (!link) throw new Error('Configuração inválida para o link do WhatsApp.');
+          abrirWhatsApp(link);
+          // Limpa UI, e loga se solicitado
+          msg.textContent = 'Abrindo WhatsApp Web...';
+          f.reset(); tel.value = '';
+          if (doLog) await logarNoN8n({
+            ...payload,
+            texto,
+            expiraEm: formatDateBR(addDays(new Date(), 30))     // envia no log
+        });
+      }
+        /* // Se provider = n8n: envia via webhook (server-side)
+        const r = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, texto })
+        });
+
+
+        if (!r.ok) {
+          throw new Error('Falha ao contatar o servidor.');
+        }
+        
+        const data = await r.json();
+
+        if (data.ok) {
+          // Mostra info útil ao vendedor (fallback)
+          let extra = '';
+          if (data.cupom) extra = ` Código: ${data.cupom}.`;
+          if (data.expiraEmBR) extra += ` Válido até ${data.expiraEmBR}.`;
+          msg.textContent = `Cupom enviado pelo WhatsApp!${extra}`;
+          f.reset();
+          tel.value = ''; // garante limpar máscara
+          } else {
+            // Degradação graciosa: tenta abrir WhatsApp Web para não perder a ação
+            msg.textContent = `Não foi possível enviar agora via servidor. Abrindo WhatsApp Web...`;
+            const fallback = gerarLinkWhatsApp(e164, texto) || `https://wa.me/${e164.replace('+','')}?text=${encodeURIComponent(texto)}`;
+            abrirWhatsApp(fallback);
+        } */
+      } catch (err) {
+        msg.textContent = err.message || 'Falha na conexão. Tente novamente.';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
