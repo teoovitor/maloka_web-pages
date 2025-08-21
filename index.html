@@ -6,10 +6,20 @@
   <title>Maloka | Gerador de Cupom de Desconto</title>
   <style>
     :root { --brand:#ff730e; --ink:#001514; }
-    body{font-family:system-ui,Arial;margin:0;padding:24px;background:#001514}
-    form{max-width:420px;margin:auto;background:#f2f2f2;padding:24px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+    body{
+      font-family:system-ui,Arial;
+      margin:0;
+      padding:24px;
+      background:#001514}
+    form{
+      max-width:420px;
+      margin:auto;
+      background:#f2f2f2;
+      padding:24px;
+      border-radius:12px;
+      box-shadow:0 6px 24px rgba(0,0,0,.06)}
     label{display:block;margin:12px 0 6px}
-    input,button{width:100%;padding:12px;border-radius:8px;border:1px solid #ddd}
+    input,button{width:100%;padding:12px;border-radius:8px;border:1px solid #fcfcfc}
     input:focus-visible, button:focus-visible{outline:3px solid var(--brand); outline-offset:2px}
     button{cursor:pointer;border:0;background:var(--brand);color:var(--ink);font-weight:600;margin-top:12px}
     button[disabled]{opacity:.6; cursor:not-allowed}
@@ -23,19 +33,20 @@
       gap: 12px;
       text-align: center;
       color: var(--brand);}
-    /*.logo_maloka {
+    .logo_maloka {
       height: 40px;
-      width: auto;
+      width: 40px;
       vertical-align: middle;
-    }*/
-    /*INSERIR DEPOIS DO H1    <img src="img/logo_maloka.png" alt="Logo Maloka" class="logo_maloka" />*/
+    }
   </style>
 </head>
 <body>
   <form id="lead" autocomplete="off" novalidate>
     <h1>
-      Maloka 🛖
+    <img src="img/logo_maloka_sem_fundo.png" alt="Logo Maloka" class="logo_maloka" />
+      Maloka
     </h1>
+    
 
     <h2>Gerador de Cupom de Desconto</h2>
 
@@ -58,7 +69,7 @@
       <strong>1000</strong>, <strong>1.000</strong>, <strong>1.000,50</strong>.
       Usaremos esse valor para calcular o desconto em reais.
     </small>
-
+    
     <label for="telefone">Telefone (WhatsApp)</label>
     <input id="telefone" name="telefone" type="tel" required
            inputmode="numeric" autocomplete="tel" placeholder="(11) 9xxxx-xxxx"
@@ -96,7 +107,7 @@
     const vendedor = params.get('vendedor') || '';                    // id do vendedor
 
     // Endpoint para log/envio via n8n (só usado se ?log=1)
-    const webhookUrl = 'https://SEU-DOMINIO-N8N/webhook/lead-cupom';
+    const webhookUrl = 'https://SEU-HOST-N8N/webhook/lead-cupom'; // produção
 
     const f = document.getElementById('lead');
     const msg = document.getElementById('msg');
@@ -104,8 +115,9 @@
     const tel = document.getElementById('telefone');
     const compraEl = document.getElementById('compra');
 
-
+    // ================================
     // Utilitários - Telefone (BR)
+    // =================================
     const onlyDigits = (s) => String(s).replace(/\D/g, '');
 
     function maskBR(digits) {
@@ -129,8 +141,9 @@
       throw new Error('Telefone inválido. Use DDD + número (ex.: 11999998888).');
     }
 
-
+    // =================================
     //  Utilitários - Datas (BR)
+    // =================================
     function addDays(date, days) {           // utilitário para D+30
       const d = new Date(date);
       d.setDate(d.getDate() + days);
@@ -140,8 +153,9 @@
       return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     }
 
-
+    // =================================
     // Utilitários — Dinheiro (BR)
+    // =================================
     // Converte string monetária (com vírgula/ponto) para centavos (inteiro)
     function parseMoneyToCents(input) {
       let s = String(input || '').trim();
@@ -175,8 +189,9 @@
       return `R$ ${Number(reaisInt).toLocaleString('pt-BR')}`;
     }
     
-
+    // =================================
     // Monta a mensagem do WhatsApp
+    // =================================
     function montarMensagem(nome, descontoReais) {
       const nomeTrim = (nome || '').trim();
       const saudacao = nomeTrim ? `Olá, ${nomeTrim}!` : 'Olá!';
@@ -191,7 +206,11 @@
     }
 
 
-     // Força entrada numérica e aplica máscara ao digitar/colar
+    // ===========================
+    // Máscaras e validações
+    // ===========================
+
+    // Força entrada numérica e aplica máscara ao digitar/colar
     tel.addEventListener('input', () => {
       const digits = onlyDigits(tel.value);
       tel.value = maskBR(digits);
@@ -214,6 +233,10 @@
     });
 
 
+    // ===========================
+    // WhatsApp helpers
+    // ===========================
+
      // Abre WhatsApp com a mensagem (Web ou wa.link)
     function abrirWhatsApp(url) {   // redireciona; evita popup block
       location.href = url;
@@ -232,20 +255,25 @@
       return null; // n8n cuidará do envio
     }
 
+    // ==========================================
     // Log no n8n (assíncrono; não bloqueia UX)
+    // ==========================================
     async function logarNoN8n(payload) {
       try {
+        const data = JSON.stringify({ ...payload, soLog:true, modoEnvio:provider });
         await fetch(webhookUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, modoEnvio: provider, soLog: true })
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: data
         });
       } catch (e) {
         // não bloqueia a UX por falha de log
       }
     }
 
+    // ===========================
     // SUBMIT
+    // ===========================
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       
@@ -279,6 +307,7 @@
           throw new Error('Informe um valor de compra válido (ex.: 56,40).');
         }
 
+
         // CÁLCULO DO DESCONTO EM REAIS (ARREDONDAR PARA BAIXO) 
         // Ex.: 56,40 * 10% = 5,64 → R$ 5
         const descontoCentavos = Math.floor((compraCents * valorPerc) / 100); // em centavos
@@ -292,7 +321,6 @@
           telefone: e164,                  // E.164: +55...
           vendedor: vendedor || undefined
         };
-
 
         const texto = montarMensagem(payload.nome, descontoReais);
 
