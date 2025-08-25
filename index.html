@@ -261,6 +261,12 @@
     async function logarNoN8n(payload) {
       try {
         const data = JSON.stringify({ ...payload, soLog:true, modoEnvio:provider });
+        if (navigator.sendBeacon) {
+          const blob = new Blob([data], { type: 'text/plain;charset=UTF-8' }); // evita preflight
+          navigator.sendBeacon(webhookUrl, blob);
+        return;
+        }
+  
         await fetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
