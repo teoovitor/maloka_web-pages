@@ -17,7 +17,7 @@
       background:#f2f2f2;
       padding:24px;
       border-radius:12px;
-      box-shadow:0 6px 24px rgba(0,0,0,.06)}
+      box-shadow:0 6px 24px rgba(0,0,0,.06)} 
     label{display:block;margin:12px 0 6px}
     input,button{width:100%;padding:12px;border-radius:8px;border:1px solid #fcfcfc}
     input:focus-visible, button:focus-visible{outline:3px solid var(--brand); outline-offset:2px}
@@ -98,16 +98,15 @@
     //   ?provider=web                                        => abre WhatsApp Web
     //   ?provider=link&walink=https%3A%2F%2Fwa.link%2F1esyzr => abre wa.link
     //   ?provider=n8n                                        => envia via webhook
-    //   ?log=1                                               => registra no n8n
     //   ?vendedor=123                                        => id/identificador do vendedor
     const params   = new URLSearchParams(location.search);
     const provider = (params.get('provider') || 'web').toLowerCase(); // web | link | n8n
     const waLink   = params.get('walink') || '';                      // link curto da loja
-    const doLog    = params.get('log') === '1';                       // força log
+    const doLog    = params.get('log') !== '0';                       // Log por padrão ligado; desligue com ?log=0
     const vendedor = params.get('vendedor') || '';                    // id do vendedor
 
-    // Endpoint para log/envio via n8n (só usado se ?log=1)
-    const webhookUrl = 'https://tech-maloka.app.n8n.cloud/webhook/lead-cupom'; // produção
+    // Permite trocar o endpoint por loja: ?logUrl=<URL encoded>
+    const webhookUrl = params.get('logUrl') || 'https://tech-maloka.app.n8n.cloud/webhook/lead-cupom'; // padrão
 
     const f = document.getElementById('lead');
     const msg = document.getElementById('msg');
@@ -260,7 +259,7 @@
     // ==========================================
     async function logarNoN8n(payload) {
       try {
-        const data = JSON.stringify({ ...payload, soLog:true, modoEnvio:provider });
+        const data = JSON.stringify({ ...payload, soLog: true, modoEnvio: provider });
         if (navigator.sendBeacon) {
           const blob = new Blob([data], { type: 'text/plain;charset=UTF-8' }); // evita preflight
           navigator.sendBeacon(webhookUrl, blob);
@@ -317,7 +316,7 @@
         // CÁLCULO DO DESCONTO EM REAIS (ARREDONDAR PARA BAIXO) 
         // Ex.: 56,40 * 10% = 5,64 → R$ 5
         const descontoCentavos = Math.floor((compraCents * valorPerc) / 100); // em centavos
-        const descontoReais    = Math.floor(descontoCentavos / 100);          // inteiro em reais
+        const descontoReais    = Math.max(1, Math.floor(descontoCentavos / 100));      // inteiro em reais (mínimo R$ 1 de desconto)
 
         const payload = {
           nome: String(form.get('nome') || '').trim(),
@@ -344,34 +343,7 @@
             expiraEm: formatDateBR(addDays(new Date(), 30))     // envia no log
         });
       }
-        /* // Se provider = n8n: envia via webhook (server-side)
-        const r = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, texto })
-        });
-
-
-        if (!r.ok) {
-          throw new Error('Falha ao contatar o servidor.');
-        }
         
-        const data = await r.json();
-
-        if (data.ok) {
-          // Mostra info útil ao vendedor (fallback)
-          let extra = '';
-          if (data.cupom) extra = ` Código: ${data.cupom}.`;
-          if (data.expiraEmBR) extra += ` Válido até ${data.expiraEmBR}.`;
-          msg.textContent = `Cupom enviado pelo WhatsApp!${extra}`;
-          f.reset();
-          tel.value = ''; // garante limpar máscara
-          } else {
-            // Degradação graciosa: tenta abrir WhatsApp Web para não perder a ação
-            msg.textContent = `Não foi possível enviar agora via servidor. Abrindo WhatsApp Web...`;
-            const fallback = gerarLinkWhatsApp(e164, texto) || `https://wa.me/${e164.replace('+','')}?text=${encodeURIComponent(texto)}`;
-            abrirWhatsApp(fallback);
-        } */
       } catch (err) {
         msg.textContent = err.message || 'Falha na conexão. Tente novamente.';
       } finally {
