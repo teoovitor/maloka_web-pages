@@ -18,14 +18,36 @@
       padding:24px;
       border-radius:12px;
       box-shadow:0 6px 24px rgba(0,0,0,.06)} 
-    label{display:block;margin:12px 0 6px}
-    input,button{width:100%;padding:12px;border-radius:8px;border:1px solid #fcfcfc}
+    label{
+      display:block;
+      margin:12px 0 6px}
+    input,button{
+      width:100%;
+      padding:12px;
+      border-radius:8px;
+      border:1px solid #fcfcfc}
     input:focus-visible, button:focus-visible{outline:3px solid var(--brand); outline-offset:2px}
-    button{cursor:pointer;border:0;background:var(--brand);color:var(--ink);font-weight:600;margin-top:12px}
-    button[disabled]{opacity:.6; cursor:not-allowed}
-    .msg{margin-top:12px;font-size:14px}
-    small{display:block;color:#666;margin-top:8px;line-height:1.4}
-    .sr-only{position:absolute;left:-9999px}
+    button{
+      cursor:pointer;
+      border:0;
+      background:var(--brand);
+      color:var(--ink);
+      font-weight:600;
+      margin-top:12px}
+    button[disabled]{
+      opacity:.6; 
+      cursor:not-allowed}
+    .msg{
+      margin-top:12px;
+      font-size:14px}
+    small{
+      display:block;
+      color:#666;
+      margin-top:8px;
+      line-height:1.4}
+    .sr-only{
+      position:absolute;
+      left:-9999px}
     h1 {
       display: flex;
       align-items: center;
@@ -50,17 +72,20 @@
 
     <h2>Gerador de Cupom de Desconto</h2>
 
+    <!-- Dados do cliente -->
     <label for="nome">Nome do cliente</label>
     <input id="nome" name="nome" required autocomplete="name" minlength="2"
            pattern="^[A-Za-zÀ-ÿ' .-]{2,}$" />
 
-    <label for="valor">Valor do desconto (%)</label>
-    <input id="valor" name="valor" type="number" inputmode="numeric"
-           min="1" max="100" step="1" placeholder="Ex.: 10" required
-           aria-describedby="valorHelp"/>
-    <small id="valorHelp">Informe apenas números — ex.: <strong>10</strong> para <strong>10%</strong></small>
+    <label for="telefone">Telefone do cliente (WhatsApp)</label>
+    <input id="telefone" name="telefone" type="tel" required
+           inputmode="numeric" autocomplete="tel" placeholder="(11) 9xxxx-xxxx"
+           maxlength="16" aria-describedby="telHelp"
+           pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"/>
+    <small id="telHelp">Digite apenas números (DDD + número). Ex.: <strong>92985183051</strong></small>
 
-    <label for="compra">Valor da compra (R$)</label>
+    <!-- Dados da compra atual -->
+    <label for="compra">Valor da compra atual (R$)</label>
     <input id="compra" name="compra" type="text" inputmode="decimal" required
            placeholder="Ex.: 56,40" aria-describedby="compraHelp"
            pattern="^\s*(\d+|\d{1,3}([.,]\d{3})+)([.,]\d{1,2})?\s*$" />
@@ -69,20 +94,21 @@
       <strong>1000</strong>, <strong>1.000</strong>, <strong>1.000,50</strong>.
       Usaremos esse valor para calcular o desconto em reais.
     </small>
-    
-    <label for="telefone">Telefone (WhatsApp)</label>
-    <input id="telefone" name="telefone" type="tel" required
-           inputmode="numeric" autocomplete="tel" placeholder="(11) 9xxxx-xxxx"
-           maxlength="16" aria-describedby="telHelp"
-           pattern="^\(\d{2}\)\s?\d{4,5}-\d{4}$"/>
-    <small id="telHelp">Digite apenas números (DDD + número). Ex.: <strong>92985183051</strong></small>
+
+    <!-- Dados do desconto para próximas compras -->
+    <label for="valor">Desconto para compra futura (%)</label>
+    <input id="valor" name="valor" type="number" inputmode="numeric"
+           min="1" max="100" step="1" placeholder="Ex.: 10" required
+           aria-describedby="valorHelp"/>
+    <small id="valorHelp">Informe apenas números — ex.: <strong>10</strong> para <strong>10%</strong></small>
 
     <!-- Honeypot anti-bot -->
     <label class="sr-only" for="website">Não preencha</label>
     <input id="website" name="website" class="sr-only" tabindex="-1" autocomplete="off" />
 
     <small>
-      Ao clicar em enviar, você concorda em mandar uma mensagem no WhatsApp informado com o cupom de desconto. 
+      Ao clicar em enviar, você concorda em mandar uma mensagem no WhatsApp do cliente informando o cupom de desconto para compras futuras.
+      O cupom é válido por 30 dias. 
     </small>
 
     <button type="submit" id="submitBtn">Gerar cupom de desconto</button>
